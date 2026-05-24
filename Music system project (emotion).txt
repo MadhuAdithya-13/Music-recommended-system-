@@ -1,0 +1,219 @@
+# Install libraries
+!pip install deepface transformers scikit-learn --quiet
+
+
+# IMPORTS
+
+
+import pandas as pd
+import numpy as np
+from deepface import DeepFace
+from transformers import pipeline
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from google.colab import files
+
+
+# DATASET
+
+
+songs = {
+    "song_name": [
+        "Happy Vibes",
+        "Rainy Tears",
+        "Dance Night",
+        "Broken Heart",
+        "Smile World",
+        "Dark Pain",
+        "Sunshine Love",
+        "Lonely Dreams",
+        "Party Time",
+        "Silent Cry"
+    ],
+
+    "lyrics": [
+        "Sunshine happiness joy smile dance fun",
+        "Pain tears lonely dark rain sorrow",
+        "Dance party music fun excitement joy",
+        "Heart broken sadness crying alone",
+        "Smile bright positive energy happiness",
+        "Dark cold shattered pain depression",
+        "Love sunshine happy moments together",
+        "Lonely nights dreams sadness tears",
+        "Party all night dance laugh excitement",
+        "Silent crying emotional heartbreak pain"
+    ]
+}
+
+df = pd.DataFrame(songs)
+
+print("✅ Dataset Loaded")
+print(df.head())
+
+
+# ADVANCED NLP SENTIMENT ANALYSIS
+# Using HuggingFace Transformer Model
+
+
+print("\n🧠 Loading NLP Sentiment Model...")
+
+sentiment_model = pipeline(
+    "sentiment-analysis",
+    model="distilbert-base-uncased-finetuned-sst-2-english"
+)
+
+# Predict sentiment
+def detect_sentiment(text):
+
+    result = sentiment_model(text)[0]
+
+    label = result['label']
+    score = result['score']
+
+    if label == "POSITIVE":
+        mood = "happy"
+    else:
+        mood = "sad"
+
+    return mood, score
+
+# Apply sentiment analysis
+moods = []
+scores = []
+
+for lyric in df['lyrics']:
+
+    mood, score = detect_sentiment(lyric)
+
+    moods.append(mood)
+    scores.append(score)
+
+df['predicted_mood'] = moods
+df['confidence'] = scores
+
+print("\n✅ NLP Mood Detection Complete")
+print(df[['song_name', 'predicted_mood', 'confidence']])
+
+
+# FACE EMOTION DETECTION
+
+
+print("\n📸 Upload Face Image")
+uploaded = files.upload()
+
+img_path = next(iter(uploaded))
+
+try:
+
+    analysis = DeepFace.analyze(
+        img_path=img_path,
+        actions=['emotion'],
+        enforce_detection=False
+    )
+
+    emotion = analysis[0]['dominant_emotion']
+
+    print(f"\n🧠 Detected Emotion: {emotion}")
+
+except Exception as e:
+
+    print("❌ Emotion Detection Error:", e)
+    emotion = "neutral"
+
+
+# EMOTION TO MUSIC MOOD
+
+
+emotion_map = {
+
+    "happy": "happy",
+    "surprise": "happy",
+
+    "sad": "sad",
+    "fear": "sad",
+    "angry": "sad",
+    "disgust": "sad",
+
+    "neutral": "happy"
+}
+
+target_mood = emotion_map.get(emotion, "happy")
+
+print(f"🎯 Recommended Mood Category: {target_mood}")
+
+
+# TF-IDF SONG SIMILARITY
+
+
+print("\n⚡ Building Recommendation Engine...")
+
+tfidf = TfidfVectorizer()
+
+tfidf_matrix = tfidf.fit_transform(df['lyrics'])
+
+similarity = cosine_similarity(tfidf_matrix)
+
+
+# RECOMMEND SONGS
+
+
+def recommend_music(mood, n=5):
+
+    filtered = df[df['predicted_mood'] == mood]
+
+    if filtered.empty:
+
+        print("❌ No songs found")
+        return
+
+    recommendations = filtered.sample(
+        n=min(n, len(filtered)),
+        random_state=42
+    )
+
+    print(f"\n🎶 Recommended Songs ({mood.upper()})")
+    print("=" * 40)
+
+    for idx, row in enumerate(recommendations.itertuples(), 1):
+
+        print(f"{idx}. {row.song_name}")
+        print(f"   Mood: {row.predicted_mood}")
+        print(f"   Confidence: {row.confidence:.2f}")
+        print()
+
+recommend_music(target_mood)
+
+
+# ACCURACY EVALUATION
+
+
+true_labels = [
+    "happy",
+    "sad",
+    "happy",
+    "sad",
+    "happy",
+    "sad",
+    "happy",
+    "sad",
+    "happy",
+    "sad"
+]
+
+df['true_label'] = true_labels
+
+accuracy = (
+    df['true_label'] == df['predicted_mood']
+).mean()
+
+print("=" * 50)
+print(f"🎯 MODEL ACCURACY: {accuracy:.2%}")
+print("=" * 50)
+
+
+# OPTIONAL: SAVE RESULTS
+
+
+df.to_csv("advanced_music_recommendation_results.csv", index=False)
+
+print("\n✅ Results saved successfully!")
